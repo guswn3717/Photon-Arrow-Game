@@ -72,31 +72,44 @@ public class Lobby : MonoBehaviourPunCallbacks
     {
         foreach (var changedRoom in roomList)
         {
-            if (allRoomList.Contains(changedRoom))
+            // 만약 방이 삭제되었거나 플레이할 수 없는 상태라면 목록에서 제거
+            if (changedRoom.RemovedFromList)
             {
-                allRoomList.Remove(changedRoom);
+                allRoomList.RemoveAll(x => x.Name == changedRoom.Name);
             }
             else
             {
-                allRoomList.Add(changedRoom);
+                // 이미 리스트에 있는 방이면 갱신(수정), 없으면 추가
+                int index = allRoomList.FindIndex(x => x.Name == changedRoom.Name);
+                if (index != -1)
+                {
+                    allRoomList[index] = changedRoom;
+                }
+                else
+                {
+                    allRoomList.Add(changedRoom);
+                }
             }
         }
 
+        // 기존에 생성된 방 버튼 UI 싹 정리
         for (int i = 0; i < content.childCount; i++)
         {
             Destroy(content.GetChild(i).gameObject);
         }
 
+        // 갱신된 방 목록을 바탕으로 버튼 다시 생성
         foreach (var room in allRoomList)
         {
             GameObject roomBtn = Instantiate(roomBtnPref, content);
             
-            Text roomNameTxt = roomBtn.GetComponentInChildren<Text>();
+            TextMeshProUGUI roomNameTxt = roomBtn.GetComponentInChildren<TextMeshProUGUI>();
             roomNameTxt.text = room.Name;
             
             roomBtn.GetComponent<Button>().onClick.AddListener(() => OnClickJoin(room.Name));
         }
     }
+
 
     // Update is called once per frame
     void Update()

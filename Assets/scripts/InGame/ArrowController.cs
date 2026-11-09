@@ -1,13 +1,9 @@
-/*  화살을 화면 위에서 아래로 떨어뜨리는 스크립트
- *      - 화살이 위에서 아래로 1초에 하나씩 떨어지는 기능 --> transform.Translate()
- *      - 화살이 게임화면 밖으로 나오면 화살 오브젝트를 소멸시키는 기능 --> Destroy()
-*/
-
 using UnityEngine;
+using Photon.Pun;
 
 public class ArrowController : MonoBehaviour
 {
-    //화살 이동 속도 (초당 Unity 단위)
+    // 화살 이동 속도 (초당 Unity 단위)
     float arrowSpeed = 6.0f;
     
     GameObject player;
@@ -22,38 +18,57 @@ public class ArrowController : MonoBehaviour
     float arrowRadius = 0.5f;         // 화살 원의 반지름
     float playerRadius = 1.0f;        // 플레이어 원의 반지름
 
+    // ★ 중복 피격 및 연쇄 호출을 막아주는 안전장치 플래그
+    bool hasDamaged = false;
+
     // 게임 시작 시 한번 실행
     void Start()
     {
-        player = GameObject.Find("player");
+        // 씬 전체에서 '내 네트워크 뷰(IsMine)를 가진 진짜 내 캐릭터'를 정확히 찾아옵니다.
+        FindMyLocalPlayer();
+    }
+
+    // 씬에 있는 플레이어 중 '내 캐릭터'만 정확히 찾아내는 함수
+    void FindMyLocalPlayer()
+    {
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+
+        foreach (var p in allPlayers)
+        {
+            if (p.photonView.IsMine)
+            {
+                player = p.gameObject;
+                break;
+            }
+        }
     }
 
     // 매 프레임 실행
     void Update()
     {
-        //1. 화살을 아래 방향으로 이동
-        //  - Translate 메서드 : 오브젝트를 현재 좌표에서 인수 값만큼 이동시키는 메서드
-        //  - Y좌표에 (-arrowSpeed * Time.deltaTime)를 지정하면 오브젝트를 조금씩 위에서 아래로 움직인다
-        //  - 프레임 마다 등속으로 낙하시킨다
+        // 1. 화살을 아래 방향으로 이동
         transform.Translate(0, -arrowSpeed * Time.deltaTime, 0);
 
-        //2. 화면 맊으로 나온 화살 소멸시키기
-        //  - 화살을 내버려 두면 화면 밖으로 나가게 되고, 눈에 보이지는 않지만 계속 떨이짐
-        //  - 화살이 보이지 않는 곳에서 계속 떨이지면 컴퓨터 역시 계산을 해야하므로 메모리 낭비
-        //  - 메모리가 낭비되지 않고록 화살이 화면 밖으로 나가면 오브젝트를 소멸시켜야 함
-        //3. Destory 메서드 : 매개변수로 전달한 오브젝트를 삭제
-        //  - 매개변수로 자신(화살 오브젝트)을 가르키는 gameObject 변수를 전달하므로 화실이
-        //  - 화면 밖으로 나갔을 때 자기 자신을 소멸시킴
+        // 2. 화면 밖으로 나온 화살 소멸시키기
         if (transform.position.y < -5.0f)
         {
-            Destroy(gameObject);
-            
+            PhotonView pv = GetComponent<PhotonView>();
+            if (pv != null && pv.IsMine)
+            {
+                PhotonNetwork.Destroy(gameObject);
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
             return;
         }
 
+        // 혹시 플레이어가 아직 안 찾아졌다면 다시 탐색 시도
         if (player == null)
         {
-            return;
+            FindMyLocalPlayer();
+            if (player == null) return;
         }
         
         // 4. 화살과 플레이어의 중심 좌표 구하기
@@ -69,22 +84,36 @@ public class ArrowController : MonoBehaviour
         // 7. 충돌 판정: 두 원의 중심 거리가 (화살 반지름 + 플레이어 반지름) 보다 작거나 같으면 충돌!
         if (arrowPlayerDistance <= arrowRadius + playerRadius)
         {
-            GameObject gameDirector = GameObject.Find("GameDirector");
-            
-            // 방법 A: 실행할 때 알아서 씬에서 GameDirector를 찾아오게 수정 // FindObjectOfType -> FindFirstObjectByType 유니티6 기능으로 바꿈
-            GameDirector director = FindFirstObjectByType<GameDirector>(); 
-            if (director != null)
+            // ★ 아직 데미지를 주지 않은 상태라면 딱 한 번만 즉사 로직 실행!
+            if (!hasDamaged)
             {
-                director.DecreaseHp();
-            }
-            else
-            {
-                Debug.LogError("씬에 GameDirector가 존재하지 않습니다!");
-            }
+                hasDamaged = true; // 잠금!
 
-            
-            Destroy(gameObject);  // 화살 본인도 파괴 (선택 사항)
+                // 충돌한 대상이 플레이어라면
+                PlayerController playerController = player.GetComponent<PlayerController>();
+                if (playerController != null)
+                {
+                    // 내 화면에 생성된 내 캐릭터인 경우에만 즉사 데미지(1.0) 부여
+                    if (playerController.photonView.IsMine)
+                    {
+                        playerController.TakeDamage(1.0f); // 한 방 컷!
+                    }
+                }
+        
+                // 화살 파괴 (네트워크 오브젝트이므로 안전하게 처리)
+                PhotonView pv = GetComponent<PhotonView>();
+                if (pv != null)
+                {
+                    if (PhotonNetwork.IsMasterClient)
+                    {
+                        PhotonNetwork.Destroy(gameObject);
+                    }
+                }
+                else
+                {
+                    Destroy(gameObject);
+                }
+            }
         }
-
     }
 }

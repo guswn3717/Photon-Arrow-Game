@@ -10,14 +10,38 @@
 *   •플레이어를 현재 좌표에서 인수 값만큼 좌, 우로 이동시키는 기능 .-> transform.Translate()
 */
 
+using Photon.Pun;
 using UnityEngine;
 using TMPro;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviourPun
 {
     [SerializeField] private GameObject LB;
     [SerializeField] private GameObject RB;
-    
+    public float currentHp = 1.0f; // 내 체력 (1.0 = 100%)
+
+    // 화살과 부딪혔을 때 호출될 함수
+    public void TakeDamage(float amount)
+    {
+        if (!photonView.IsMine) return; // 오직 내 캐릭터만 데미지를 입음!
+
+        currentHp -= amount;
+        Debug.Log("내 체력 남음: " + currentHp);
+
+        // 여기서 내 화면의 HP 게이지를 깎아줌 (아래 2번 참고)
+        GameDirector director = FindFirstObjectByType<GameDirector>();
+        if (director != null)
+        {
+            director.UpdateHpGauge(currentHp);
+        }
+
+        if (currentHp <= 0f)
+        {
+            // 게임오버 처리
+            director.TriggerGameOver();
+        }
+    }
+
     //실행 시 한번 수
     void Start()
     {   
@@ -28,18 +52,25 @@ public class PlayerController : MonoBehaviour
     //매 프레임 마다 실행
     void Update()
     {
-        //왼쪽 화살 키가 눌렸을때 -> GetKeyDown(KeyCode.LeftArrow)
-        if ((Input.GetKey(KeyCode.LeftArrow) || isLBPressed) && transform.position.x > -8)   // GetKeyDown -> GetKey로 바꿔 누르는 동안 움직이게
-        {                                                                   // 그리고 창 밖으로 못나가게 하는건 and(&&)연산자로 쉽게 구현
-            // Translate 메서드 : 오브젝트를 현재 좌표에서 인수만큼 이동시키는 메서드
-            // 값이 -3 이므로 왼쪽에서 '3' 만큼 움직인다
-            transform.Translate(-0.1f, 0, 0);
-        }
-        
-        //오른쪽 화살표 키가 눌렸을때 -> GetKeyDown(KeyCode.RightArrow)
-        if ((Input.GetKey(KeyCode.RightArrow) || isRBPressed) && transform.position.x < 8)   // GetKeyDown -> GetKey로 바꿔 누르는 동안 움직이게
-        {                                                                   // 그리고 창 밖으로 못나가게 하는건 and(&&)연산자로 쉽게 구현
-            transform.Translate(0.1f, 0, 0);
+        if (photonView.IsMine)
+        {
+            //왼쪽 화살 키가 눌렸을때 -> GetKeyDown(KeyCode.LeftArrow)
+            if ((Input.GetKey(KeyCode.LeftArrow) || isLBPressed) &&
+                transform.position.x > -8) // GetKeyDown -> GetKey로 바꿔 누르는 동안 움직이게
+            {
+                // 그리고 창 밖으로 못나가게 하는건 and(&&)연산자로 쉽게 구현
+                // Translate 메서드 : 오브젝트를 현재 좌표에서 인수만큼 이동시키는 메서드
+                // 값이 -3 이므로 왼쪽에서 '3' 만큼 움직인다
+                transform.Translate(-0.1f, 0, 0);
+            }
+
+            //오른쪽 화살표 키가 눌렸을때 -> GetKeyDown(KeyCode.RightArrow)
+            if ((Input.GetKey(KeyCode.RightArrow) || isRBPressed) &&
+                transform.position.x < 8) // GetKeyDown -> GetKey로 바꿔 누르는 동안 움직이게
+            {
+                // 그리고 창 밖으로 못나가게 하는건 and(&&)연산자로 쉽게 구현
+                transform.Translate(0.1f, 0, 0);
+            }
         }
     }
     
